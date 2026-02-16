@@ -31,18 +31,18 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- Темная тема (автоматически подхватывается из ОС) --- */
+/* Темная тема (включается через кнопку ИЛИ если в ОС стоит темная тема) */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg-color: #111827;        /* Очень темный сине-серый */
-    --surface-color: #1f2937;   /* Цвет карточки */
+  :root:not([data-theme="light"]) {
+    --bg-color: #111827;
+    --surface-color: #1f2937;
     --text-color: #f9fafb;
     --text-muted: #9ca3af;
     --primary-color: #6366f1;
     --primary-hover: #818cf8;
     --border-color: #374151;
     --input-bg: #374151;
-    
+
     --error-bg: #7f1d1d;
     --error-text: #fecaca;
     --error-border: #991b1b;
@@ -50,6 +50,25 @@
     --success-text: #bbf7d0;
     --success-border: #166534;
   }
+}
+
+/* Принудительная темная тема (когда нажали на кнопку) */
+:root[data-theme="dark"] {
+  --bg-color: #111827;
+  --surface-color: #1f2937;
+  --text-color: #f9fafb;
+  --text-muted: #9ca3af;
+  --primary-color: #6366f1;
+  --primary-hover: #818cf8;
+  --border-color: #374151;
+  --input-bg: #374151;
+
+  --error-bg: #7f1d1d;
+  --error-text: #fecaca;
+  --error-border: #991b1b;
+  --success-bg: #14532d;
+  --success-text: #bbf7d0;
+  --success-border: #166534;
 }
 
 /* --- Базовый сброс и центрирование --- */
@@ -111,3 +130,5 @@ button {
 button:active {
   transform: scale(0.98); /* Легкое вдавливание кнопки при клике */
 }
+
+
