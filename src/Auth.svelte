@@ -1,30 +1,21 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import type { SignUpRequest, SignInRequest } from './models';
+    import { locale, t } from './i18n';
     import { signUp, signIn, logout } from './api';
 
     let activeTab: 'signin' | 'signup' = 'signin';
-    let username = '';
-    let email = '';
-    let password = '';
-    let confirmPassword = '';
-    let errorMessage = '';
-    let successMessage = '';
-    let isLoading = false;
+    let username = '', email = '', password = '', confirmPassword = '';
+    let errorMessage = '', successMessage = '', isLoading = false;
     let isAuthenticated = false;
-
-    // --- Логика смены темы ---
     let isDarkMode = false;
 
-    onMount(async () => {
-        // Проверяем сохраненную тему или настройки системы
+    onMount(() => {
         const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            isDarkMode = true;
-            document.documentElement.setAttribute('data-theme', 'dark');
-        } else {
-            document.documentElement.setAttribute('data-theme', 'light');
-        }
+        isDarkMode = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+        
+        const savedLang = localStorage.getItem('lang') as 'ru' | 'en';
+        if (savedLang) locale.set(savedLang);
     });
 
     function toggleTheme() {
@@ -33,354 +24,267 @@
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
     }
-    // -------------------------
 
-    function switchTab(tab: 'signin' | 'signup') {
+    function toggleLang() {
+        locale.update(l => {
+            const newLang = l === 'ru' ? 'en' : 'ru';
+            localStorage.setItem('lang', newLang);
+            return newLang;
+        });
+    }
+
+    // Вспомогательная функция для смены табов
+    function setTab(tab: 'signin' | 'signup') {
         activeTab = tab;
-        resetForm();
+        errorMessage = ''; successMessage = '';
     }
 
-    function resetForm() {
-        username = '';
-        email = '';
-        password = '';
-        confirmPassword = '';
-        errorMessage = '';
-        successMessage = '';
-    }
-
-    async function handleSignUp() {
-        errorMessage = '';
-        successMessage = '';
-        isLoading = true;
-
+    async function handleAuth(type: 'login' | 'register') {
+        errorMessage = ''; successMessage = ''; isLoading = true;
         try {
-            if (password !== confirmPassword) {
-                throw new Error('Пароли не совпадают');
+            if (type === 'register') {
+                if (password !== confirmPassword) throw new Error($t('errPasswordMismatch'));
+                await signUp({ username, email, password });
+                successMessage = $t('succSignUp');
+                setTimeout(() => setTab('signin'), 1500);
+            } else {
+                await signIn({ email, password });
+                isAuthenticated = true;
+                successMessage = $t('succSignIn');
             }
-
-            const data: SignUpRequest = { username, email, password };
-            await signUp(data);
-            successMessage = 'Регистрация прошла успешно!';
-            switchTab('signin');
         } catch (err) {
-            errorMessage = err instanceof Error ? err.message : 'Произошла ошибка при регистрации';
-        } finally {
-            isLoading = false;
-        }
+            errorMessage = err instanceof Error ? err.message : 'Error';
+        } finally { isLoading = false; }
     }
 
-    async function handleSignIn() {
-        errorMessage = '';
-        successMessage = '';
-        isLoading = true;
-
-        try {
-            const data: SignInRequest = { email, password };
-            await signIn(data);
-            successMessage = 'Вход выполнен успешно!';
-            isAuthenticated = true;
-        } catch (err) {
-            errorMessage = err instanceof Error ? err.message : 'Произошла ошибка при входе';
-        } finally {
-            isLoading = false;
-        }
-    }
-
-    async function handleSignOut() {
-        try {
-            await logout();
-            isAuthenticated = false;
-            successMessage = 'Вы вышли из системы';
-        } catch (err) {
-            errorMessage = err instanceof Error ? err.message : 'Произошла ошибка при выходе';
-        }
-    }
-
-    function validateEmail(email: string): boolean {
-        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return re.test(email);
-    }
-
-    function validatePassword(password: string): boolean {
-        return password.length >= 6;
-    }
-
-    $: isFormValid = activeTab === 'signin'
-        ? validateEmail(email) && validatePassword(password)
-        : validateEmail(email) && validatePassword(password) && password === confirmPassword && username.trim() !== '';
+    $: isFormValid = activeTab === 'signin' 
+        ? (email && password.length >= 6)
+        : (username && email && password.length >= 6 && password === confirmPassword);
 </script>
 
 <div class="auth-wrapper">
-    <div class="theme-toggle-container">
-        <button class="theme-btn" on:click={toggleTheme} aria-label="Сменить тему">
-            {isDarkMode ? '☀️ Светлая' : '🌙 Темная'}
+    <div class="top-bar">
+        <button class="icon-btn" on:click={toggleLang}>
+            🌍 <span class="btn-text">{$locale.toUpperCase()}</span>
+        </button>
+        <button class="icon-btn" on:click={toggleTheme}>
+            {isDarkMode ? $t('themeLight') : $t('themeDark')}
         </button>
     </div>
 
-    <div class="auth-container">
+    <div class="card">
         {#if isAuthenticated}
-            <div class="authenticated-view">
-                <h2>Вы вошли в систему</h2>
-                <p>Добро пожаловать!</p>
-                <button on:click={handleSignOut} class="btn btn-secondary">Выйти</button>
+            <div class="status-view">
+                <div class="success-icon">✓</div>
+                <h2>{$t('authTitle')}</h2>
+                <p>{$t('authWelcome')}</p>
+                <button class="btn btn-secondary" on:click={() => isAuthenticated = false}>
+                    {$t('btnLogout')}
+                </button>
             </div>
         {:else}
-            <div class="auth-form">
-                <div class="tabs">
-                    <button
-                        class={`tab-btn ${activeTab === 'signin' ? 'active' : ''}`}
-                        on:click={() => switchTab('signin')}
-                    >
-                        Вход
-                    </button>
-                    <button
-                        class={`tab-btn ${activeTab === 'signup' ? 'active' : ''}`}
-                        on:click={() => switchTab('signup')}
-                    >
-                        Регистрация
-                    </button>
+            <div class="tabs">
+                <button class="tab" class:active={activeTab === 'signin'} on:click={() => setTab('signin')}>
+                    {$t('tabSignIn')}
+                </button>
+                <button class="tab" class:active={activeTab === 'signup'} on:click={() => setTab('signup')}>
+                    {$t('tabSignUp')}
+                </button>
+            </div>
+
+            <form on:submit|preventDefault={() => handleAuth(activeTab === 'signin' ? 'login' : 'register')}>
+                {#if activeTab === 'signup'}
+                    <div class="field">
+                        <label for="u">{$t('labelUsername')}</label>
+                        <input id="u" type="text" bind:value={username} placeholder={$t('phUsername')} />
+                    </div>
+                {/if}
+
+                <div class="field">
+                    <label for="e">{$t('labelEmail')}</label>
+                    <input id="e" type="email" bind:value={email} placeholder="mail@example.com" />
                 </div>
 
-                {#if activeTab === 'signin'}
-                    <form on:submit|preventDefault={handleSignIn} class="form">
-                        <div class="form-group">
-                            <label for="email">Email:</label>
-                            <input type="email" id="email" bind:value={email} required placeholder="your@email.com" />
-                        </div>
+                <div class="field">
+                    <label for="p">{$t('labelPassword')}</label>
+                    <input id="p" type="password" bind:value={password} placeholder="••••••" />
+                </div>
 
-                        <div class="form-group">
-                            <label for="password">Пароль:</label>
-                            <input type="password" id="password" bind:value={password} required minlength="6" placeholder="••••••" />
-                        </div>
-
-                        <button type="submit" disabled={!isFormValid || isLoading} class="btn btn-primary">
-                            {isLoading ? 'Вход...' : 'Войти'}
-                        </button>
-                    </form>
-                {:else}
-                    <form on:submit|preventDefault={handleSignUp} class="form">
-                        <div class="form-group">
-                            <label for="username">Имя пользователя:</label>
-                            <input type="text" id="username" bind:value={username} required minlength="3" placeholder="Имя пользователя" />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="signup-email">Email:</label>
-                            <input type="email" id="signup-email" bind:value={email} required placeholder="your@email.com" />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="signup-password">Пароль:</label>
-                            <input type="password" id="signup-password" bind:value={password} required minlength="6" placeholder="••••••" />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="confirm-password">Подтвердите пароль:</label>
-                            <input type="password" id="confirm-password" bind:value={confirmPassword} required placeholder="••••••" />
-                        </div>
-
-                        <button type="submit" disabled={!isFormValid || isLoading} class="btn btn-primary">
-                            {isLoading ? 'Регистрация...' : 'Зарегистрироваться'}
-                        </button>
-                    </form>
+                {#if activeTab === 'signup'}
+                    <div class="field">
+                        <label for="cp">{$t('labelConfirm')}</label>
+                        <input id="cp" type="password" bind:value={confirmPassword} placeholder="••••••" />
+                    </div>
                 {/if}
 
-                {#if errorMessage}
-                    <div class="error-message">{errorMessage}</div>
-                {/if}
+                <button type="submit" class="btn btn-primary" disabled={!isFormValid || isLoading}>
+                    {isLoading ? $t(activeTab === 'signin' ? 'btnSigningIn' : 'btnSigningUp') : $t(activeTab === 'signin' ? 'btnSignIn' : 'btnSignUp')}
+                </button>
+            </form>
 
-                {#if successMessage}
-                    <div class="success-message">{successMessage}</div>
-                {/if}
-            </div>
+            {#if errorMessage}<div class="msg err">{errorMessage}</div>{/if}
+            {#if successMessage}<div class="msg succ">{successMessage}</div>{/if}
         {/if}
     </div>
 </div>
 
 <style>
-    /* Обертка для центрирования кнопки и формы */
     .auth-wrapper {
         width: 100%;
-        max-width: 480px; /* Растянули до 480px */
-        margin: 0 auto;
+        max-width: 420px;
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 1.5rem;
     }
 
-    /* Стили кнопки смены темы */
-    .theme-toggle-container {
+    .top-bar {
         display: flex;
         justify-content: flex-end;
+        gap: 0.75rem;
     }
 
-    .theme-btn {
+    .icon-btn {
         background: var(--surface-color);
         border: 1px solid var(--border-color);
         color: var(--text-color);
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-
-    .theme-btn:hover {
-        border-color: var(--primary-color);
-        color: var(--primary-color);
-    }
-
-    /* Основной контейнер формы */
-    .auth-container {
-        background-color: var(--surface-color);
-        border: 1px solid var(--border-color);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        padding: 0.5rem 0.8rem;
         border-radius: 12px;
-        padding: 2.5rem;
-        font-family: inherit;
-        color: var(--text-color);
+        cursor: pointer;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        transition: all 0.2s;
     }
 
-    /* Вкладки */
+    .icon-btn:hover {
+        border-color: var(--primary-color);
+        transform: translateY(-1px);
+    }
+
+    .card {
+        background: var(--surface-color);
+        padding: 2.5rem;
+        border-radius: 24px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+
     .tabs {
         display: flex;
-        border-bottom: 2px solid var(--border-color);
+        background: var(--bg-color);
+        padding: 0.3rem;
+        border-radius: 14px;
         margin-bottom: 2rem;
     }
 
-    .tab-btn {
-        flex: 1; /* Вкладки делят ширину пополам */
-        padding: 1rem;
+    .tab {
+        flex: 1;
+        padding: 0.7rem;
         border: none;
         background: transparent;
         color: var(--text-muted);
         cursor: pointer;
         font-weight: 600;
-        font-size: 1.1rem;
+        border-radius: 10px;
         transition: all 0.2s;
-        border-bottom: 2px solid transparent;
-        margin-bottom: -2px;
     }
 
-    .tab-btn:hover {
-        color: var(--text-color);
-    }
-
-    .tab-btn.active {
+    .tab.active {
+        background: var(--surface-color);
         color: var(--primary-color);
-        border-bottom: 2px solid var(--primary-color);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
 
-    /* Форма и инпуты */
-    .form-group {
-        margin-bottom: 1.5rem;
+    .field {
+        margin-bottom: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
     }
 
-    .form-group label {
-        display: block;
-        margin-bottom: 0.5rem;
+    label {
+        font-size: 0.85rem;
         font-weight: 600;
-        font-size: 0.9rem;
-        color: var(--text-color);
+        color: var(--text-muted);
+        margin-left: 0.2rem;
     }
 
-    .form-group input {
+    input {
         width: 100%;
-        padding: 0.875rem;
+        padding: 0.8rem 1rem;
+        border-radius: 12px;
         border: 1px solid var(--border-color);
-        border-radius: 8px;
-        box-sizing: border-box;
-        background-color: var(--input-bg);
+        background: var(--input-bg);
         color: var(--text-color);
         font-size: 1rem;
-        transition: border-color 0.2s, box-shadow 0.2s;
-    }
-
-    .form-group input:focus {
         outline: none;
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        transition: all 0.2s;
     }
 
-    /* Кнопки */
+    input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+    }
+
     .btn {
+        width: 100%;
         padding: 1rem;
-        border: none;
-        border-radius: 8px;
+        border-radius: 12px;
+        font-weight: 700;
         cursor: pointer;
-        font-size: 1.1rem;
-        font-weight: 600;
-        width: 100%; /* Растягиваем на всю ширину */
+        border: none;
         transition: all 0.2s;
-        text-align: center;
+        margin-top: 1rem;
     }
 
     .btn-primary {
-        background-color: var(--primary-color);
-        color: #ffffff; /* Белый текст на первичной кнопке всегда */
-        box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2);
+        background: var(--primary-color);
+        color: white;
     }
 
     .btn-primary:hover:not(:disabled) {
-        background-color: var(--primary-hover);
+        background: var(--primary-hover);
         transform: translateY(-1px);
     }
 
     .btn-primary:disabled {
-        background-color: var(--border-color);
-        color: var(--text-muted);
+        opacity: 0.5;
         cursor: not-allowed;
-        box-shadow: none;
     }
 
     .btn-secondary {
-        background-color: transparent;
+        background: transparent;
         border: 1px solid var(--border-color);
         color: var(--text-color);
     }
 
-    .btn-secondary:hover {
-        background-color: var(--error-bg);
-        color: var(--error-text);
-        border-color: var(--error-border);
-    }
-
-    /* Уведомления */
-    .error-message, .success-message {
-        padding: 1rem;
-        border-radius: 8px;
+    .msg {
         margin-top: 1.5rem;
+        padding: 0.8rem;
+        border-radius: 10px;
+        text-align: center;
+        font-size: 0.9rem;
         font-weight: 500;
+    }
+
+    .err { background: var(--error-bg); color: var(--error-text); border: 1px solid var(--error-border); }
+    .succ { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+
+    .status-view {
         text-align: center;
     }
 
-    .error-message {
-        color: var(--error-text);
-        background-color: var(--error-bg);
-        border: 1px solid var(--error-border);
-    }
-
-    .success-message {
+    .success-icon {
+        width: 60px;
+        height: 60px;
+        background: var(--success-bg);
         color: var(--success-text);
-        background-color: var(--success-bg);
-        border: 1px solid var(--success-border);
-    }
-
-    .authenticated-view {
-        text-align: center;
-        padding: 2rem 0;
-    }
-
-    .authenticated-view h2 {
-        margin-bottom: 1rem;
-        color: var(--text-color);
-    }
-
-    .authenticated-view p {
-        margin-bottom: 2rem;
-        color: var(--text-muted);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        margin: 0 auto 1.5rem;
     }
 </style>
